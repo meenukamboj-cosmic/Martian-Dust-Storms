@@ -1,0 +1,59 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Grid and domain setup (Latitude x Longitude)
+nx, ny = 100, 100
+dx = dy = 50.0  # spatial resolution (km)
+dt = 0.5        # time step (hours)
+nt = 200        # total simulation steps
+
+# Physical constants for Martian atmosphere simulation
+u_wind = 15.0   # Zonal wind speed (km/h) - eastward transport
+v_wind = 5.0    # Meridional wind speed (km/h) - northward transport
+diff_coeff = 20.0  # Atmospheric diffusion coefficient (km^2/h)
+settling_rate = 0.005  # Gravitational dust settling rate (1/h)
+
+# Initialize dust concentration grid (tau / opacity)
+dust_opacity = np.zeros((ny, nx))
+
+# Define dust storm source region (e.g., Hellas Basin region)
+source_y, source_x = 40, 30
+source_radius = 8
+
+# Simulation loop
+plt.ion()
+fig, ax = plt.subplots(figsize=(7, 6))
+
+for t in range(nt):
+    # Active dust injection from storm source for first 100 steps
+    if t < 100:
+        y, x = np.ogrid[:ny, :nx]
+        mask = (x - source_x)**2 + (y - source_y)**2 <= source_radius**2
+        dust_opacity[mask] += 0.1  # Dust injection rate
+
+    # Calculate spatial derivatives for Advection (Upwind scheme)
+    d_dust_dx = (dust_opacity - np.roll(dust_opacity, 1, axis=1)) / dx
+    d_dust_dy = (dust_opacity - np.roll(dust_opacity, 1, axis=0)) / dy
+
+    # Calculate spatial derivatives for Diffusion (Central difference scheme)
+    d2_dust_dx2 = (np.roll(dust_opacity, -1, axis=1) - 2 * dust_opacity + np.roll(dust_opacity, 1, axis=1)) / (dx**2)
+    d2_dust_dy2 = (np.roll(dust_opacity, -1, axis=0) - 2 * dust_opacity + np.roll(dust_opacity, 1, axis=0)) / (dy**2)
+
+    # Update dust opacity field: Advection + Diffusion - Settling
+    dust_opacity += dt * (
+        - (u_wind * d_dust_dx + v_wind * d_dust_dy) 
+        + diff_coeff * (d2_dust_dx2 + d2_dust_dy2) 
+        - settling_rate * dust_opacity
+    )
+
+    # Visualization every 10 steps
+    if t % 10 == 0:
+        ax.clear()
+        im = ax.imshow(dust_opacity, cmap='YlOrRd', origin='lower', vmin=0, vmax=5)
+        ax.set_title(f"Martian Dust Storm Opacity (Sol Time: Step {t})")
+        ax.set_xlabel("Longitude Index")
+        ax.set_ylabel("Latitude Index")
+        plt.pause(0.05)
+
+plt.ioff()
+plt.show()
