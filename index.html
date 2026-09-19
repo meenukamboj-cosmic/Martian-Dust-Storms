@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mars GCM - Dust Storm Simulation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background: #07090e; color: #d1d5db; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+    h1 { font-size: 1.3rem; color: #f97316; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 15px; width: 100%; max-width: 800px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    canvas { width: 100%; height: auto; border-radius: 8px; background: #180d09; border: 1px solid #334155; }
+    .telemetry { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; }
+    .box { background: #1e293b; padding: 10px; border-radius: 6px; text-align: center; }
+    .box span { display: block; font-size: 0.75rem; color: #94a3b8; }
+    .box strong { font-size: 1.1rem; color: #38bdf8; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+    button { background: #ea580c; border: none; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #c2410c; }
+    .slider-group { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+    input[type="range"] { accent-color: #ea580c; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Mars Global Circulation Model (MGCM)</h1>
+    <canvas id="simCanvas" width="760" height="380"></canvas>
+    
+    <div class="telemetry">
+      <div class="box"><span>SIMULATION SOL</span><strong id="solVal">Sol 01</strong></div>
+      <div class="box"><span>GLOBAL OPTICAL DEPTH (&tau;)</span><strong id="tauVal">0.25</strong></div>
+      <div class="box"><span>STORM STATUS</span><strong id="statusVal" style="color: #4ade80;">Regional</strong></div>
+    </div>
+
+    <div class="controls">
+      <button id="toggleBtn">Pause</button>
+      <button id="triggerBtn">Trigger Hellas Storm</button>
+      <div class="slider-group">
+        <label>Wind Stress:</label>
+        <input type="range" id="windSlider" min="0.5" max="2.5" step="0.1" value="1.2" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    let isRunning = true;
+    let sol = 1;
+    let frame = 0;
+    let particles = [];
+    let dustGrid = new Float32Array(80 * 40).fill(0.15);
+    const gw = 80, gh = 40;
+
+    // Feature landmarks (Longitude, Latitude)
+    const features = [
+      { name: "Hellas Basin", x: 0.2, y: 0.7, r: 40 },
+      { name: "Tharsis", x: 0.7, y: 0.45, r: 50 },
+      { name: "Amazonis", x: 0.55, y: 0.35, r: 35 }
+    ];
+
+    // Streamline particles
+    for (let i = 0; i < 180; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        speed: 1 + Math.random() * 2,
+        life: Math.random() * 100
+      });
+    }
+
+    function draw() {
+      // Background base
+      ctx.fillStyle = "#140a06";
+      ctx.fillRect(0, 0, width, height);
+
+      // Mars elevation tone map
+      features.forEach(f => {
+        let grad = ctx.createRadialGradient(f.x * width, f.y * height, 5, f.x * width, f.y * height, f.r);
+        grad.addColorStop(0, "rgba(180, 83, 9, 0.4)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(f.x * width, f.y * height, f.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "10px sans-serif";
+        ctx.fillText(f.name, f.x * width - 25, f.y * height);
+      });
+
+      // Atmospheric Dust render
+      let totalTau = 0;
+      for (let j = 0; j < gh; j++) {
+        for (let i = 0; i < gw; i++) {
+          let tau = dustGrid[j * gw + i];
+          totalTau += tau;
+          if (tau > 0.3) {
+            ctx.fillStyle = `rgba(234, 88, 12, ${Math.min(0.65, tau * 0.15)})`;
+            ctx.fillRect(i * (width / gw), j * (height / gh), width / gw, height / gh);
+          }
+        }
+      }
+
+      // Wind stream vector particles
+      ctx.fillStyle = "#38bdf8";
+      particles.forEach(p => {
+        let latNorm = (p.y / height) * 2 - 1;
+        let u = Math.cos(latNorm * Math.PI) * 3; // Zonal jet
+        let v = -Math.sin(latNorm * Math.PI) * 0.8; // Hadley return
+
+        p.x += u * p.speed;
+        p.y += v * p.speed;
+        p.life--;
+
+        if (p.x > width) p.x = 0;
+        if (p.x < 0) p.x = width;
+        if (p.y > height || p.y < 0 || p.life <= 0) {
+          p.x = Math.random() * width;
+          p.y = Math.random() * height;
+          p.life = 60 + Math.random() * 60;
+        }
+
+        ctx.fillRect(p.x, p.y, 2, 2);
+      });
+
+      // Update metrics
+      let meanTau = totalTau / (gw * gh);
+      document.getElementById('tauVal').innerText = meanTau.toFixed(2);
+      let status = document.getElementById('statusVal');
+      if (meanTau > 1.2) {
+        status.innerText = "Global Encircling";
+        status.style.color = "#ef4444";
+      } else if (meanTau > 0.5) {
+        status.innerText = "Regional Active";
+        status.style.color = "#f59e0b";
+      } else {
+        status.innerText = "Background Quiescent";
+        status.style.color = "#4ade80";
+      }
+    }
+
+    function step() {
+      if (!isRunning) return;
+      frame++;
+      if (frame % 30 === 0) {
+        sol++;
+        document.getElementById('solVal').innerText = "Sol " + (sol < 10 ? "0" + sol : sol);
+      }
+
+      // Advection & Diffusion simulation step
+      let nextGrid = new Float32Array(dustGrid);
+      for (let j = 1; j < gh - 1; j++) {
+        for (let i = 0; i < gw; i++) {
+          let left = (i - 1 + gw) % gw;
+          let current = j * gw + i;
+          let windFactor = parseFloat(document.getElementById('windSlider').value);
+          // Simple horizontal transport + settling
+          nextGrid[current] = dustGrid[current] * 0.992 + dustGrid[j * gw + left] * 0.007 * windFactor;
+        }
+      }
+      dustGrid = nextGrid;
+      draw();
+      requestAnimationFrame(step);
+    }
+
+    document.getElementById('toggleBtn').onclick = () => {
+      isRunning = !isRunning;
+      document.getElementById('toggleBtn').innerText = isRunning ? "Pause" : "Play";
+      if (isRunning) step();
+    };
+
+    document.getElementById('triggerBtn').onclick = () => {
+      // Inject storm in Hellas (around x=16, y=28)
+      for (let dj = -4; dj <= 4; dj++) {
+        for (let di = -5; di <= 5; di++) {
+          let idx = (28 + dj) * gw + (16 + di);
+          if (idx >= 0 && idx < dustGrid.length) dustGrid[idx] += 3.5;
+        }
+      }
+    };
+
+    draw();
+    step();
+  </script>
+</body>
+</html>
