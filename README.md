@@ -21,3 +21,8 @@ Links:
 <video src="VID_20261004_085304_495.mp4" width="100%" controls></video>
 
 📹 [Direct Link to Video](./VID_20261004_085304_495.mp4)
+### GCM Mars Dust Storm Project - Video Explanation
+
+<video src="https://raw.githubusercontent.com/meenukamboj-cosmic/Martian-Dust-Storms/main/VID_20261004_085304_495.mp4" width="100%" controls autoplay loop></video>
+
+📹 [Direct Link to Video](https://raw.githubusercontent.com/meenukamboj-cosmic/Martian-Dust-Storms/main/VID_20261004_085304_495.mp4)
